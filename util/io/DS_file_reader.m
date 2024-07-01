@@ -48,7 +48,11 @@ classdef DS_file_reader < handle
                     if any(strcmp(dataset_candidates, dataset_name))
                         obj.dataset_names{end + 1} = dataset_name;
                         tmp = find(strcmp(dataset_candidates, dataset_name));
-                        obj.dimension_ordering = obj.known_dims{dataset_candidates_idx(tmp(1))};
+                        if i > length(obj.known_dims)
+                            obj.dimension_ordering = obj.known_dims{1}
+                        else
+                            obj.dimension_ordering = obj.known_dims{dataset_candidates_idx(tmp(1))};
+                        end
                     end
                 end
                 if isempty(obj.dataset_names)
