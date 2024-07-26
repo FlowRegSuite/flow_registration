@@ -48,6 +48,7 @@ function reference_frame = compensate_recording(options, ...
         c_ref_raw = double(options.get_reference_frame(video_file_reader));
         reference_frame = c_ref_raw;
     else
+        options.normalize_ref = true;
         c_ref_raw = reference_frame;
     end
     
@@ -85,6 +86,28 @@ function reference_frame = compensate_recording(options, ...
             tmp = imgaussfilt3_multichannel(buffer, options);
             min_ref = double(min(tmp(:)));
             max_ref = double(max(tmp(:)));
+
+            if options.normalize_ref
+                fprintf("\nNormalizing the reference with respect to the video due to externally provided reference.\n\n")
+                
+                filtered_c_ref = imgaussfilt3_multichannel(c_ref_raw, options);
+                
+                for k = size(filtered_c_ref, 3)
+
+                    tmp_ch = tmp(:, :, k, :);
+                    mean_buffer = mean(double(tmp_ch(:)));
+                    std_buffer = std(double(tmp_ch(:)));
+
+                    ref_ch = filtered_c_ref(:, :, k, :);
+
+                    mean_c_ref = mean(ref_ch(:));
+                    std_c_ref = std(ref_ch(:));
+                    
+                    standardized_c_ref = (c_ref_raw(:, :, k, :) - mean_c_ref) / std_c_ref;
+                    
+                    c_ref_raw(:, :, k, :) = standardized_c_ref * std_buffer + mean_buffer;
+                end
+            end
             
             if strcmp(options.channel_normalization, 'separate')
                 c_ref = mat2gray_multichannel(...

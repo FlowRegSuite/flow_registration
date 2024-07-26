@@ -54,6 +54,9 @@ classdef OF_options < handle & matlab.mixin.Copyable
         min_frames_per_reference = 20;
         naming_convention = 'default';
         save_valid_idx = false;
+        % The following is for normalizing externally loaded references
+        % differently:
+        normalize_ref = false;
     end
     
     methods
@@ -369,10 +372,12 @@ classdef OF_options < handle & matlab.mixin.Copyable
             if isstring(obj.reference_frames) || ...
                     ischar(obj.reference_frames)
                 reference = imread(obj.reference_frames);
+                obj.normalize_ref = true;
                 return;
             end
             reference = obj.reference_frames;
             if nargin < 2
+                obj.normalize_ref = true;
                 return;
             end
             assert(isa(video_file_reader, 'Video_file_reader'));
