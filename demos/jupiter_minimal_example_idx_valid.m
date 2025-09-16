@@ -13,7 +13,7 @@ end
 input_file = fullfile(output_folder, 'jupiter.tiff');
 if (~exist(input_file, 'file'))
     websave(input_file, ...
-        'https://cloud.hiz-saarland.de/s/JpHyczRSMDbLwzP/download');
+        'https://drive.usercontent.google.com/download?id=12lEhahzKtOZsFgxLzwxnT8JsVBErvzJH&export=download&authuser=0');
 end
 
 options = OF_options(...
