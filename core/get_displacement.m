@@ -23,6 +23,7 @@ function w = get_displacement( fixed, moving, varargin )
     weight = ones(1, n_channels, 'double') / n_channels;
     
     a_data = 0.45 * ones(1, n_channels);
+    use_gpu = false;
     
     for k = 1:length(varargin)
         if ~isa(varargin{k}, 'char')
@@ -56,6 +57,8 @@ function w = get_displacement( fixed, moving, varargin )
                 a_smooth = varargin{k + 1};
             case 'min_level'
                 min_level = varargin{k + 1};
+            case 'use_gpu'
+                use_gpu = logical(varargin{k+1});
             otherwise
                 % fprintf(['could not parse input argument ' varargin{k} '\n']);
         end
@@ -142,8 +145,13 @@ function w = get_displacement( fixed, moving, varargin )
             alpha_scaling = eta.^(-0.5 * i);
         end
         
-        [du, dv] = level_solver(J11, J22, J33, J12, J13, J23, weight_level, ... 
-            u, v, alpha * alpha_scaling, iterations, update_lag, 0, a_data, a_smooth, hx, hy);
+        if use_gpu
+            [du, dv] = OF_solver_GPU(J11, J22, J33, J12, J13, J23, weight_level, ...
+                u, v, alpha * alpha_scaling, iterations, update_lag, 0, a_data, a_smooth, hx, hy);
+        else
+            [du, dv] = level_solver(J11, J22, J33, J12, J13, J23, weight_level, ... 
+                u, v, alpha * alpha_scaling, iterations, update_lag, 0, a_data, a_smooth, hx, hy);
+        end
         
         if min(level_size > 5)
             du(2:end-1, 2:end-1) = medfilt2(du(2:end-1, 2:end-1), [5 5], 'symmetric');
@@ -161,91 +169,6 @@ function w = get_displacement( fixed, moving, varargin )
     if min_level > 0
         w = imresize(w, [m, n]);
     end
-end
-
-function [du, dv] = OF_solver_GPU(J11, J22, J33, J12, J13, J23, weight_level, ... 
-            u, v, alpha, iterations, update_lag, verbose, a_data, a_smooth, hx, hy)
-        
-    u_gpu = gpuArray(u);
-    v_gpu = gpuArray(v);
-        
-    du = gpuArray(zeros(size(u)));
-    dv = gpuArray(zeros(size(u)));
-    psi_data = gpuArray(ones(size(J11) - [2, 2, 0]));
-    
-    [m, n] = size(du);
-    c1 = gpuArray(2:m-1);
-    c2 = gpuArray(2:n-1);
-    
-    tmp1 = alpha(1) / hx.^2;
-    tmp2 = alpha(2) / hy.^2;
-    tmp3 = 2 * tmp1 + 2 * tmp2;
-
-    kernel = [0, tmp1, 0;
-              tmp2, 0, tmp2;
-              0, tmp1, 0];
-          
-    j11 = gpuArray(J11);
-    j22 = gpuArray(J22);
-    j33 = gpuArray(J33);
-    j12 = gpuArray(J12);
-    j23 = gpuArray(J23);
-    j13 = gpuArray(J13);
-    
-    for iteration_counter = 0:iterations-1
-        
-        if mod(iteration_counter, update_lag) == 0
-            % update non-linearities
-            psi_data = j11 .* du.^2 + j22 .* dv.^2 + j23 .* dv + ...
-                2 * j12 .* du .* dv + 2 * j13 .* du + j23 .* dv + j33;
-            psi_data(psi_data < 0) = 0;
-            psi_data = a_data(1) * (psi_data + 0.00001).^(a_data(1) - 1);
-        end
-        
-        set_boundary(du);
-        set_boundary(dv);
-        
-
-%         l = 1:n-2;
-%         r = 3:n;
-%         t = 1:m-2;
-%         b = 3:m;        
-%         
-%         smooth_u = 0;
-%         smooth_u = smooth_u + tmp1 * (u(c1, l) + du(c1, l) - u(c1, c2));
-%         smooth_u = smooth_u + tmp1 * (u(c1, r) + du(c1, r) - u(c1, c2));
-%         smooth_u = smooth_u + tmp2 * (u(t, c2) + du(t, c2) - u(c1, c2));
-%         smooth_u = smooth_u + tmp2 * (u(b, c2) + du(b, c2) - u(c1, c2));
-
-        denom_u = 0; %tmp3;
-        denom_v = denom_u;
-
-%         smooth_u = conv2(u + du, kernel, 'valid') - tmp3 * u(c1, c2);
-%         smooth_v = conv2(v + dv, kernel, 'valid') - tmp3 * v(c1, c2);
-        
-%         smooth_v = 0;
-%         smooth_v = smooth_v + tmp1 * (v(c1, l) + dv(c1, l) - v(c1, c2));
-%         smooth_v = smooth_v + tmp1 * (v(c1, r) + dv(c1, r) - v(c1, c2));
-%         smooth_v = smooth_v + tmp2 * (v(t, c2) + dv(t, c2) - v(c1, c2));
-%         smooth_v = smooth_v + tmp2 * (v(b, c2) + dv(b, c2) - v(c1, c2));
-
-        num_u = sum(- psi_data .* (J13 + J12 .* dv), 3);
-        denom_u = denom_u + sum(psi_data .* J11, 3);
-        denom_v = denom_v + sum(psi_data .* J22, 3);
-        
-        du(c1, c2) = (1 - 1.95) * du(c1, c2) + ...
-            1.95 * ((num_u(c1, c2, :)) ./ denom_u(c1, c2));
-        
-        num_v = sum(- psi_data .* (J23 + J12 .* du), 3);
-        
-        dv(c1, c2) = (1 - 1.95) * dv(c1, c2) + ...
-            1.95 * ((num_v(c1, c2, :)) ./ denom_v(c1, c2));
-    end 
-    dv = (1-tmp1) * (dv + v_gpu) + tmp1 * imgaussfilt(v_gpu + dv, 10) - v_gpu;
-    du = (1-tmp1) * (du + u_gpu) + tmp1 * imgaussfilt(u_gpu + du, 10) - u_gpu;
-    
-    du = gather(du);
-    dv = gather(dv);
 end
 
 function f = add_boundary(f)
