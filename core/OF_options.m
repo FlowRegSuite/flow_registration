@@ -57,6 +57,7 @@ classdef OF_options < handle & matlab.mixin.Copyable
         % The following is for normalizing externally loaded references
         % differently:
         normalize_ref = false;
+        use_gpu = false;
     end
     
     methods
@@ -110,6 +111,9 @@ classdef OF_options < handle & matlab.mixin.Copyable
                 {'default', 'batch'})));
             addParameter(p, 'save_valid_idx', obj.save_valid_idx, ...
                 @(x) isscalar(x) && islogical(x));
+
+            addParameter(p, 'use_gpu', obj.use_gpu, @(x) islogical(x) && isscalar(x))
+
             parse(p, varargin{:});
 
             for i = 1:length(p.Parameters)
@@ -424,6 +428,7 @@ classdef OF_options < handle & matlab.mixin.Copyable
                     'eta', obj.eta, ...
                     'update_lag', obj.update_lag, ...
                     'iterations', obj.iterations, ...
+                    'use_gpu', obj.use_gpu, ...
                     'a_smooth', obj.a_smooth, 'a_data', obj.a_data);
                                 
                 reference = mean(c_reg_tmp, 4);
